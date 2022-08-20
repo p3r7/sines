@@ -79,6 +79,8 @@ engine.name = "Sines"
 MusicUtil = require "musicutil"
 _16n = include "sines/lib/16n"
 
+local done_init = false
+
 function init()
   print("loaded Sines engine")
   add_params()
@@ -110,6 +112,8 @@ function init()
         end
       end
   end)
+
+  done_init = true
 end
 
 function cleanup()
@@ -210,7 +214,7 @@ function add_params()
           params:add{type = "number", id = "pan" ..i, name = "pan " .. i, min = -1, max = 1, default = 0, formatter = function(param) return pan_formatter(param:get()) end, action = function(x) set_synth_pan(i - 1, x) end}
           params:add{type = "number", id = "note" ..i, name = "note " .. i, min = 0, max = 127, default = 60, formatter = function(param) return MusicUtil.note_num_to_name(param:get(), true) end, action = function(x) set_note(i - 1, x) end}
           params:add_control("cents" .. i, "cents detune " .. i, controlspec.new(-200, 200, 'lin', 1, 0,'cents'))
-          params:set_action("cents" .. i, function(x) tune(i - 1, x) end)
+          params:set_action("cents" .. i, function(x) tune(i - 1, x, false) end)
           params:add_control("fm_index" .. i, "fm index " .. i, controlspec.new(0.0, 200.0, 'lin', 1.0, 3.0))
           params:set_action("fm_index" .. i, function(x) set_fm_index(i - 1, x) end)
           params:add{type = "number", id = "env" ..i, name = "env " .. i, min = 1, max = 16, default = 1, formatter = function(param) return env_formatter(param:get()) end, action = function(x) set_env(i, x) end}
@@ -260,10 +264,12 @@ function set_note(synth_num, value)
 	screen_dirty = true
 end
 
-function set_freq(synth_num, value)
+function set_freq(synth_num, value, is_global)
 	engine.hz(synth_num, value)
 	engine.hz_lag(synth_num, 0.005)
-	edit = synth_num
+        if not is_global then
+          edit = synth_num
+        end
 	screen_dirty = true
 end
 
@@ -278,15 +284,27 @@ function set_vol(synth_num, value)
         screen_dirty = true
 end
 
-function tune(synth_num, value)
+function tune(synth_num, value, is_global)
 	--calculate new tuned value from cents value + midi note
 	--https://music.stackexchange.com/questions/17566/how-to-calculate-the-difference-in-cents-between-a-note-and-an-arbitrary-frequen
 	local detuned_freq = (math.pow(10, value/3986))*MusicUtil.note_num_to_freq(notes[synth_num])
 	--round to 2 decimal points
 	detuned_freq = math.floor((detuned_freq) * 10 / 10)
-	set_freq(synth_num, detuned_freq)
-	edit = synth_num
+	set_freq(synth_num, detuned_freq, is_global)
+        if not is_global then
+          edit = synth_num
+        end
 	screen_dirty = true
+end
+
+function z_tuning_handler()
+        if not done_init then
+          return
+        end
+        for i = 1,16 do
+          local note_num = i - 1
+          tune(i - 1, params:get("cents" .. i), true)
+        end
 end
 
 function set_env(synth_num, value)
